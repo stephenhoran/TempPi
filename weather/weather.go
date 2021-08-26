@@ -3,8 +3,11 @@ package weather
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
+	"sync"
+	"time"
 )
 
 const (
@@ -14,12 +17,14 @@ const (
 )
 
 type Weather struct {
+	RWSync         *sync.RWMutex
 	Temperature    Fahrenheit
 	FeelsLike      Fahrenheit
 	TemperatureMin Fahrenheit
 	TemperatureMax Fahrenheit
 	Pressure       int
 	Humidity       int
+	LastCall       time.Time
 }
 
 type Response struct {
@@ -48,6 +53,29 @@ type Wind struct {
 	Degree float64 `json:"deg"`
 }
 
+// NewWeather creates a new instance of weather. It requests the first fetch and also starts a Go Routine. The is
+// concurrent safe.
+func NewWeather() (*Weather, error) {
+	weather := Weather{}
+
+	if err := weather.FetchWeather(); err != nil {
+		return &weather, err
+	}
+
+	go func(w *Weather) {
+		for {
+			log.Println("Fetching Weather...")
+			time.Sleep(time.Minute * 1)
+
+			if err := w.FetchWeather(); err != nil {
+				return
+			}
+		}
+	}(&weather)
+
+	return &weather, nil
+}
+
 // FetchWeather is responsible for making the call to Open Weather and grabbing the most recent weather report.
 // OS Env variable WEATHER_API_KEY containing the API Key secret is required for this to work.
 func (w *Weather) FetchWeather() error {
@@ -70,12 +98,16 @@ func (w *Weather) FetchWeather() error {
 		return err
 	}
 
+	w.RWSync.Lock()
 	w.Temperature = WeatherData.Main.Temperature.ConvtoF()
 	w.FeelsLike = WeatherData.Main.FeelsLike.ConvtoF()
 	w.TemperatureMax = WeatherData.Main.TemperatureMax.ConvtoF()
 	w.TemperatureMin = WeatherData.Main.TemperatureMin.ConvtoF()
 	w.Humidity = WeatherData.Main.Humidity
 	w.Pressure = WeatherData.Main.Pressure
+
+	w.LastCall = time.Now()
+	w.RWSync.Unlock()
 
 	return nil
 }

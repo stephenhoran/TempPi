@@ -19,7 +19,7 @@ const (
 
 var (
 	maiaFont    font.Face
-	weatherData weather.Weather
+	weatherData *weather.Weather
 )
 
 //nolint:gochecknoinits
@@ -36,7 +36,10 @@ func init() {
 }
 
 func init() {
-	if err := weatherData.FetchWeather(); err != nil {
+	var err error
+
+	weatherData, err = weather.NewWeather()
+	if err != nil {
 		log.Println(err)
 	}
 }
